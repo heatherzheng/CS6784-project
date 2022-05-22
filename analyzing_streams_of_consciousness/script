@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu May 12 14:14:11 2022
+
+@author: tejas
+"""
+
+#import libraries
+import pandas as pd 
+import numpy as np
+import re
+import os
+from nltk.corpus import stopwords
+import glob
+import gensim
+from gensim.models import KeyedVectors
+from scipy import spatial
+stop = stopwords.words('english')
+from scipy import stats
+
+
+#change directory to the folder and import data
+files = glob.glob("*")
+files = [x for x in files if ".txt" in x]
+
+files_t = [x for x in files if "true" in x]
+files_g = [x for x in files if "gene" in x]
+
+data = []
+for i in range(0,len(files_t)):
+    a = open(files_t[i],'r',errors='ignore')
+    a1 = a.readlines()
+    data.append(a1)
+    a.close()
+    
+data2 = []
+for i in range(0,len(files_g)):
+    a = open(files_g[i],'r',errors='ignore')
+    a1 = a.readlines()
+    data2.append(a1)
+    a.close()
+    
+data2 = [data2[4],data2[1]]
+data5 = data2[0][1:201] + data2[1][1:201]
+data6 = [0 for x in range(1,201)] + [1 for x in range(1,201)]
+
+
+
+data3 = data[1]+data2[1]
+
+#preprocess data
+data3 = [re.sub('[^a-zA-Z]', ' ', x.lower()) for x in  data3]
+
+#use pretrained word embeddings to create feature
+vecs = KeyedVectors.load_word2vec_format("enwiki_20180420_nolg_300d.txt")
+vocab = [x for x in vecs.vocab]
+
+data3 = [x.split() for x in data3]
+data4 = [[x for x in y if x in vocab] for y in data3]
+
+
+          
+result = [[(1 - spatial.distance.cosine(vecs[data4[j][i]], vecs[data4[j][i-1]])) for i in range(0,len(data4[j]))] for j in range(0,len(data4))]
+
+
+result2 = [[stats.moment(x, moment = 1),stats.moment(x, moment = 2),stats.moment(x, moment = 3),stats.moment(x, moment = 4),stats.moment(x, moment = 5), min(x), max(x), np.percentile(x, 25),np.percentile(x, 50),np.percentile(x, 75)] for x in result]
+X = pd.DataFrame(result2)
+y = [0 for x in range(0,7500)]+[1 for x in range(7500,15000)]
+
+#use random forest classifier to create a confusion matrix
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.25, random_state = 0)
+
+from sklearn.ensemble import RandomForestClassifier
+classifier = RandomForestClassifier(n_estimators = 1000, criterion = 'entropy', random_state = 0)
+classifier.fit(X_train, y_train)
+
+# Predicting the Test set results
+y_pred = classifier.predict(X_test)
+
+# Making the Confusion Matrix
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(y_test, y_pred)
+
